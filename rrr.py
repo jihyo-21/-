@@ -1,3 +1,4 @@
+import streamlit as st
 import pandas as pd
 
 # --- 1. 가상의(Dummy) 감염병 데이터 생성 ---
@@ -43,11 +44,9 @@ df = pd.DataFrame(data)
 
 # 각 질병의 퍼센트 계산 함수
 def calculate_percentage(row, disease_col_prefix):
-    # '독감_환자수_2024_가상' 형식의 컬럼명에서 '독감' 부분만 추출하여 질병명으로 사용
-    disease_name = disease_col_prefix.split('_')[0] 
-    
+    disease_name = disease_col_prefix.split('_')[0]
     patient_col = f'{disease_name}_환자수_2024_가상'
-    
+
     total_patients = row[patient_col]
     population = row['인구수_2024_가상']
     return (total_patients / population) * 100 if population > 0 else 0.0
@@ -57,60 +56,43 @@ disease_names = ['독감', '결핵', '수족구병', '노로바이러스', '일�
 for disease in disease_names:
     df[f'{disease}_퍼센트'] = df.apply(lambda row: calculate_percentage(row, disease), axis=1)
 
-# --- 2. 앱 실행 함수 ---
-def get_regional_disease_info():
-    print("--- 대한민국 지역별 주요 감염병 현황 (2024년 가상 데이터 기반) ---")
-    print("정보를 알고 싶은 지역의 번호를 입력해주세요.")
+# --- Streamlit 앱 구성 ---
+st.set_page_config(layout="centered") # 페이지 레이아웃 설정
+st.title("🇰🇷 대한민국 지역별 주요 감염병 현황")
+st.markdown("---")
+st.write("2024년 가상 데이터를 기반으로, 대한민국 시/도별 주요 감염병 유병률(퍼센트)을 보여드립니다.")
+st.write("아래 드롭다운 메뉴에서 지역을 선택해주세요.")
 
-    # 지역 목록 출력
-    for i, region_name in enumerate(df['지역']):
-        print(f"{i+1}. {region_name}")
-    print(f"{len(df)+1}. 종료") # 종료 옵션 추가
+# 지역 목록 생성
+regions = df['지역'].tolist()
+# 스트림릿 selectbox를 사용하여 지역 선택 UI 생성
+selected_region = st.selectbox(
+    "**지역을 선택해주세요:**",
+    regions
+)
 
-    while True:
-        try:
-            user_choice = input("\n번호 입력: ").strip()
+# 선택된 지역에 대한 정보 표시
+if selected_region:
+    selected_row = df[df['지역'] == selected_region].iloc[0]
+    population = selected_row['인구수_2024_가상']
 
-            if user_choice == str(len(df)+1):
-                print("앱을 종료합니다. 감사합니다! 😃")
-                break
+    st.subheader(f"📍 {selected_region} ({population:,}명)의 주요 감염병 현황")
 
-            choice_index = int(user_choice) - 1 # 사용자가 1부터 시작하는 번호를 입력하므로 -1
+    diseases_info = {}
+    for disease in disease_names:
+        percentage_col = f'{disease}_퍼센트'
+        if percentage_col in selected_row:
+            diseases_info[disease] = selected_row[percentage_col]
 
-            if 0 <= choice_index < len(df):
-                selected_row = df.iloc[choice_index]
-                region_name = selected_row['지역']
-                population = selected_row['인구수_2024_가상']
+    # 퍼센트가 높은 순서대로 정렬하여 상위 3개만 선택
+    sorted_diseases = sorted(diseases_info.items(), key=lambda item: item[1], reverse=True)[:3]
 
-                print(f"\n--- {region_name} ({population:,}명)의 주요 감염병 현황 ---")
-
-                # 주요 감염병 퍼센트를 추출하여 정렬
-                diseases_info = {}
-                for disease in disease_names:
-                    percentage_col = f'{disease}_퍼센트'
-                    if percentage_col in selected_row: # 해당 질병 퍼센트 컬럼이 있는지 확인
-                        diseases_info[disease] = selected_row[percentage_col]
-                
-                # 퍼센트가 높은 순서대로 정렬하여 상위 3개만 선택
-                sorted_diseases = sorted(diseases_info.items(), key=lambda item: item[1], reverse=True)[:3]
-
-                if sorted_diseases:
-                    for i, (disease, percentage) in enumerate(sorted_diseases):
-                        # 해당 질병의 환자 수도 함께 표시
-                        patient_count_col = f'{disease}_환자수_2024_가상'
-                        patient_count = selected_row[patient_count_col] if patient_count_col in selected_row else 'N/A'
-                        print(f"{i+1}. {disease}: {percentage:.2f}% (환자수: {patient_count:,}명)")
-                else:
-                    print("이 지역에 보고된 주요 감염병 정보가 없습니다. (데이터 부족)")
-
-            else:
-                print("⚠️ 유효하지 않은 번호입니다. 목록에 있는 번호를 입력해주세요.")
-
-        except ValueError:
-            print("⚠️ 잘못된 입력입니다. 숫자를 입력해주세요.")
-        except Exception as e:
-            print(f"오류가 발생했습니다: {e}")
-
-# --- 앱 실행 ---
-if __name__ == "__main__":
-    get_regional_disease_info()
+    if sorted_diseases:
+        for i, (disease, percentage) in enumerate(sorted_diseases):
+            patient_count_col = f'{disease}_환자수_2024_가상'
+            patient_count = selected_row[patient_count_col] if patient_count_col in selected_row else 'N/A'
+            st.write(f"**{i+1}. {disease}:** {percentage:.2f}% (환자수: {patient_count:,}명)")
+        st.markdown("---")
+        st.info("💡 **참고:** 이 데이터는 실제 통계가 아닌, 앱 기능 시연을 위한 가상 데이터입니다.")
+    else:
+        st.warning("선택하신 지역에 대한 주요 감염병 정보가 부족합니다.")
